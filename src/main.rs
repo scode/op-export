@@ -6,6 +6,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
 
+struct Item {
+    uuid: String,
+    body: String,
+}
+
 // Narrow trait representing the subset of functionality from the pp cmdline tool
 // which we need.
 //
@@ -33,15 +38,16 @@ impl Op for MockOp {
     }
 }
 
-fn get_items(r: Receiver<String>, s: Sender<anyhow::Result<String>>, op: Arc<dyn Op>) {
+fn get_items(r: Receiver<String>, s: Sender<anyhow::Result<Item>>, op: Arc<dyn Op>) {
     for uuid in r {
-        s.send(op.get_item(&uuid)).unwrap();
+        s.send(op.get_item(&uuid).map(|body| Item { uuid, body }))
+            .unwrap();
     }
 }
 
-fn export(op: Arc<dyn Op>) {
+fn export(op: Arc<dyn Op>) -> anyhow::Result<()> {
     let (uuid_sender, uuid_receiver) = unbounded::<String>();
-    let (item_sender, item_receiver) = unbounded::<anyhow::Result<String>>();
+    let (item_sender, item_receiver) = unbounded::<anyhow::Result<Item>>();
 
     let mut getters: Vec<std::thread::JoinHandle<()>> = vec![];
     for _ in 0..5 {
@@ -61,15 +67,18 @@ fn export(op: Arc<dyn Op>) {
     drop(uuid_sender);
 
     for item in item_receiver {
-        println!("item: {}", item.unwrap());
+        let item = item?;
+        println!("item: {}: {}", item.uuid, item.body);
     }
 
     for getter in getters {
         getter.join().unwrap();
     }
+
+    Ok(())
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     export(Arc::new(MockOp {
         items: [
             ("uuid1".to_owned(), "1body".to_owned()),
@@ -78,7 +87,7 @@ fn main() {
         .iter()
         .cloned()
         .collect(),
-    }));
+    }))
 }
 
 mod test {}
