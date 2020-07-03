@@ -90,4 +90,22 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-mod test {}
+mod test {
+    #[test]
+    fn test_fetch_all_items_all_success() -> anyhow::Result<()> {
+        let items = super::fetch_all_items(std::sync::Arc::new(super::MockOp {
+            items: [
+                ("uuid1".to_owned(), "1body".to_owned()),
+                ("uuid2".to_owned(), "2body".to_owned()),
+            ]
+            .iter()
+            .cloned()
+            .collect(),
+        }))?;
+
+        // TODO: Finish.
+        assert_eq!(2, items.len());
+
+        Ok(())
+    }
+}
