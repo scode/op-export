@@ -10,7 +10,7 @@ use std::thread;
 // which we need.
 //
 // See also: https://1password.com/downloads/command-line/
-trait Op {
+trait Op: Send + Sync + 'static {
     fn list_items(&self) -> anyhow::Result<Vec<String>>;
     fn get_item(&self, uuid: &str) -> anyhow::Result<String>;
 }
@@ -39,8 +39,7 @@ fn get_items(r: Receiver<String>, s: Sender<anyhow::Result<String>>, op: Arc<dyn
     }
 }
 
-// TODO: Arc<Op>
-fn export(op: Arc<MockOp>) {
+fn export(op: Arc<dyn Op>) {
     let (uuid_sender, uuid_receiver) = unbounded::<String>();
     let (item_sender, item_receiver) = unbounded::<anyhow::Result<String>>();
 
