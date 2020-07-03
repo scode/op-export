@@ -45,7 +45,7 @@ fn get_items(r: Receiver<String>, s: Sender<anyhow::Result<Item>>, op: Arc<dyn O
     }
 }
 
-fn export(op: Arc<dyn Op>) -> anyhow::Result<()> {
+fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
     let (uuid_sender, uuid_receiver) = unbounded::<String>();
     let (item_sender, item_receiver) = unbounded::<anyhow::Result<Item>>();
 
@@ -63,23 +63,17 @@ fn export(op: Arc<dyn Op>) -> anyhow::Result<()> {
     for uuid in op.list_items().unwrap() {
         uuid_sender.send(uuid).unwrap();
     }
-
     drop(uuid_sender);
-
-    for item in item_receiver {
-        let item = item?;
-        println!("item: {}: {}", item.uuid, item.body);
-    }
 
     for getter in getters {
         getter.join().unwrap();
     }
 
-    Ok(())
+    item_receiver.into_iter().collect()
 }
 
 fn main() -> anyhow::Result<()> {
-    export(Arc::new(MockOp {
+    let items = fetch_all_items(Arc::new(MockOp {
         items: [
             ("uuid1".to_owned(), "1body".to_owned()),
             ("uuid2".to_owned(), "2body".to_owned()),
@@ -87,7 +81,13 @@ fn main() -> anyhow::Result<()> {
         .iter()
         .cloned()
         .collect(),
-    }))
+    }))?;
+
+    for item in items {
+        println!("{}: {}", item.uuid, item.body);
+    }
+
+    Ok(())
 }
 
 mod test {}
