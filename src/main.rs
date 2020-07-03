@@ -43,10 +43,16 @@ fn export(op: Arc<dyn Op>) {
     let (uuid_sender, uuid_receiver) = unbounded::<String>();
     let (item_sender, item_receiver) = unbounded::<anyhow::Result<String>>();
 
-    let opclone = op.clone();
-    let get_item_thread = thread::spawn(move || {
-        get_items(uuid_receiver, item_sender, opclone);
-    });
+    let mut getters: Vec<std::thread::JoinHandle<()>> = vec![];
+    for _ in 0..5 {
+        let opclone = op.clone();
+        let rcvclone = uuid_receiver.clone();
+        let sndclone = item_sender.clone();
+        getters.push(thread::spawn(move || {
+            get_items(rcvclone, sndclone, opclone);
+        }));
+    }
+    drop(item_sender);
 
     for uuid in op.list_items().unwrap() {
         uuid_sender.send(uuid).unwrap();
@@ -58,7 +64,9 @@ fn export(op: Arc<dyn Op>) {
         println!("item: {}", item.unwrap());
     }
 
-    get_item_thread.join().unwrap();
+    for getter in getters {
+        getter.join().unwrap();
+    }
 }
 
 fn main() {
