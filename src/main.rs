@@ -59,6 +59,12 @@ struct ToolOp {
     command: String,
 }
 
+impl ToolOp {
+    fn new(command: String) -> ToolOp {
+        ToolOp { command }
+    }
+}
+
 impl Op for ToolOp {
     fn list_items(&self) -> anyhow::Result<Vec<String>> {
         let output = check_output(
@@ -202,15 +208,8 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
 }
 
 fn main() -> anyhow::Result<()> {
-    let items = fetch_all_items(Arc::new(MockOp {
-        items: [
-            ("uuid1".to_owned(), "{\"uuid\": \"uuid1\"}".to_owned()),
-            ("uuid2".to_owned(), "{\"uuid\": \"uuid2\"}".to_owned()),
-        ]
-        .iter()
-        .cloned()
-        .collect(),
-    }))?;
+    let tool = ToolOp::new("op".into());
+    let items = fetch_all_items(Arc::new(tool))?;
 
     for item in items {
         println!("{}: {}", item.uuid, item.body);
@@ -288,9 +287,7 @@ mod test {
 
     fn optool(tool_body: &[u8]) -> (super::ToolOp, MockTool) {
         let tool = MockTool::new(tool_body);
-        let op = super::ToolOp {
-            command: tool.file.path().to_str().unwrap().into(),
-        };
+        let op = super::ToolOp::new(tool.file.path().to_str().unwrap().into());
 
         (op, tool)
     }
