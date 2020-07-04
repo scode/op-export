@@ -170,8 +170,11 @@ fn validated_item(item: anyhow::Result<Item>) -> anyhow::Result<Item> {
 
 fn get_items(r: Receiver<String>, s: Sender<anyhow::Result<Item>>, op: Arc<dyn Op>) {
     for uuid in r {
-        s.send(op.get_item(&uuid).map(|body| Item { uuid, body }))
-            .unwrap();
+        if s.send(op.get_item(&uuid).map(|body| Item { uuid, body }))
+            .is_err()
+        {
+            break;
+        }
     }
 }
 
@@ -273,6 +276,27 @@ mod test {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn test_fetch_all_items_some_failed() -> anyhow::Result<()> {
+        let items = super::fetch_all_items(std::sync::Arc::new(super::MockOp {
+            items: vec![
+                ("uuid1".to_owned(), Some("{\"uuid\": \"uuid1\"}".to_owned())),
+                ("uuid2".to_owned(), None),
+                ("uuid3".to_owned(), Some("{\"uuid\": \"uuid3\"}".to_owned())),
+            ]
+            .into_iter()
+            .collect(),
+        }));
+
+        match items {
+            Ok(_) => Err(anyhow::anyhow!("fetch should have failed")),
+            Err(e) => {
+                assert_eq!("mock error for uuid uuid2", e.to_string());
+                Ok(())
+            }
+        }
     }
 
     struct MockTool {
