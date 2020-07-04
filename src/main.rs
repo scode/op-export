@@ -295,4 +295,22 @@ mod test {
 
         Ok(())
     }
+
+    #[test]
+    fn test_tool_op_get_item_kill9() -> anyhow::Result<()> {
+        let (op, _tool) = optool(b"#!/bin/bash\n kill -9 $$");
+
+        assert!(op.get_item("uuid").is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_tool_op_list_items_kill9() -> anyhow::Result<()> {
+        let (op, _tool) = optool(b"#!/bin/bash\n kill -9 $$");
+
+        assert!(op.list_items().is_err());
+
+        Ok(())
+    }
 }
