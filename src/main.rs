@@ -93,6 +93,17 @@ fn main() -> anyhow::Result<()> {
 
 mod test {
     #[test]
+    fn test_fetch_all_items_all_no_items() -> anyhow::Result<()> {
+        let items = super::fetch_all_items(std::sync::Arc::new(super::MockOp {
+            items: std::collections::HashMap::new(),
+        }))?;
+
+        assert_eq!(0, items.len());
+
+        Ok(())
+    }
+
+    #[test]
     fn test_fetch_all_items_all_success() -> anyhow::Result<()> {
         let items = super::fetch_all_items(std::sync::Arc::new(super::MockOp {
             items: [
