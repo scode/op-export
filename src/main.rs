@@ -281,6 +281,22 @@ mod test {
     }
 
     #[test]
+    fn test_tool_op_list_items_two_items() -> anyhow::Result<()> {
+        let (op, _tool) =
+            optool(b"#!/bin/bash\n echo '[{\"key1\": \"value1\"}, {\"key2\": \"value2\"}]'");
+
+        let items = op.list_items().unwrap();
+        assert_eq!(2, items.len());
+
+        let item1: serde_json::Value = serde_json::from_str(items.get(0).unwrap())?;
+        let item2: serde_json::Value = serde_json::from_str(items.get(1).unwrap())?;
+        assert_eq!(serde_json::json!({"key1": "value1"}), item1);
+        assert_eq!(serde_json::json!({"key2": "value2"}), item2);
+
+        Ok(())
+    }
+
+    #[test]
     fn test_tool_op_list_items_not_json() -> anyhow::Result<()> {
         let (op, _tool) = optool(b"#!/bin/bash\n echo 'this is not json'");
 
