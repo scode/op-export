@@ -182,6 +182,10 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
     }
     drop(uuid_sender);
 
+    // Note: This pipeline will shortcircuit during collect() if an error is encountered,
+    // thus closing the underlying channel since item_receiver will be consumed.
+    //
+    // Not sure how to make this more explicit while still being idiomatic?
     let items: anyhow::Result<Vec<Item>> = item_receiver
         .into_iter()
         .map(|it| {
