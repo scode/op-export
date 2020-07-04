@@ -135,6 +135,11 @@ impl ProgressReporter {
 }
 
 fn validated_item(item: anyhow::Result<Item>) -> anyhow::Result<Item> {
+    // Validate that the item body is JSON. We are unopinionated about the structure
+    // of it beyond it being JSON.
+    //
+    // Is there a more idiomatic way of doing this before flatten lands?
+    // (https://github.com/rust-lang/rust/issues/70142)
     match item {
         Ok(item) => {
             // ::<Value> is required. With it, inference will cause us to ask
