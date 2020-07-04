@@ -66,11 +66,27 @@ impl Op for MockOp {
 struct ToolOp {
     /// Command to run (e.g. "op").
     command: String,
+    backoff: bool,
 }
 
 impl ToolOp {
     fn new(command: String) -> ToolOp {
-        ToolOp { command }
+        ToolOp {
+            command,
+            backoff: true,
+        }
+    }
+
+    /// Disable backoff during retries - intended for tests.
+    ///
+    /// We only disable the backoff, not the retries. We want as much code
+    /// coverage as possible, just not actually sleeping.
+    #[cfg(test)]
+    fn new_without_backoff(command: String) -> ToolOp {
+        ToolOp {
+            command,
+            backoff: false,
+        }
     }
 }
 
@@ -110,15 +126,38 @@ impl Op for ToolOp {
     }
 
     fn get_item(&self, uuid: &str) -> anyhow::Result<String> {
-        let output = check_output(
-            Command::new("/usr/bin/env")
-                .arg(self.command.clone())
-                .arg("get")
-                .arg("item")
-                .arg(uuid),
-        )?;
+        let mut tries = 0;
 
-        Ok(output)
+        loop {
+            tries += 1;
+
+            let output = check_output(
+                Command::new("/usr/bin/env")
+                    .arg(self.command.clone())
+                    .arg("get")
+                    .arg("item")
+                    .arg(uuid),
+            );
+            match output {
+                Ok(output) => return Ok(output),
+                Err(e) => {
+                    if tries == 5 {
+                        return Err(e);
+                    }
+
+                    use rand::Rng;
+                    let backoff_time =
+                        rand::thread_rng().gen_range(tries * 1000, (tries + 1) * 1000);
+
+                    if self.backoff {
+                        println!("backing off: {}ms", backoff_time);
+                        std::thread::sleep(std::time::Duration::from_millis(backoff_time));
+                    } else {
+                        println!("would have backed off: {}ms", backoff_time);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -325,7 +364,7 @@ mod test {
 
     fn optool(tool_body: &[u8]) -> (super::ToolOp, MockTool) {
         let tool = MockTool::new(tool_body);
-        let op = super::ToolOp::new(tool.file.path().to_str().unwrap().into());
+        let op = super::ToolOp::new_without_backoff(tool.file.path().to_str().unwrap().into());
 
         (op, tool)
     }
