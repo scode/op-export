@@ -106,12 +106,11 @@ mod test {
     #[test]
     fn test_fetch_all_items_all_success() -> anyhow::Result<()> {
         let items = super::fetch_all_items(std::sync::Arc::new(super::MockOp {
-            items: [
+            items: vec![
                 ("uuid1".to_owned(), "1body".to_owned()),
                 ("uuid2".to_owned(), "2body".to_owned()),
             ]
-            .iter()
-            .cloned()
+            .into_iter()
             .collect(),
         }))?;
 
