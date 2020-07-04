@@ -277,4 +277,22 @@ mod test {
 
         Ok(())
     }
+
+    #[test]
+    fn test_tool_op_get_item_correct_arguments() -> anyhow::Result<()> {
+        let (op, _tool) = optool(b"#!/bin/bash\n [[ \"$1\" == \"get\" ]] && [[ \"$2\" == \"item\" ]] && [[ \"$3\" == \"uuid\" ]] && [[ \"$4\" == \"\" ]] && echo {}");
+
+        op.get_item("uuid").unwrap();
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_tool_op_list_items_correct_arguments() -> anyhow::Result<()> {
+        let (op, _tool) = optool(b"#!/bin/bash\n [[ \"$1\" == \"list\" ]] && [[ \"$2\" == \"items\" ]] && [[ \"$3\" == \"\" ]] && echo \"[]\"");
+
+        op.list_items().unwrap();
+
+        Ok(())
+    }
 }
