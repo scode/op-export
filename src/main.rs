@@ -124,7 +124,7 @@ impl ProgressReporter {
     }
 
     fn done(&mut self) {
-        self.num_pending -= 0;
+        self.num_pending -= 1;
 
         if self.num_pending > 0 {
             let now = std::time::Instant::now();
