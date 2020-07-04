@@ -126,10 +126,12 @@ impl ProgressReporter {
     fn done(&mut self) {
         self.num_pending -= 0;
 
-        let now = std::time::Instant::now();
-        if now.duration_since(self.last_report) > std::time::Duration::from_millis(1000) {
-            self.last_report = now;
-            eprintln!("{} items still to go", self.num_pending);
+        if self.num_pending > 0 {
+            let now = std::time::Instant::now();
+            if now.duration_since(self.last_report) > std::time::Duration::from_millis(1000) {
+                self.last_report = now;
+                eprintln!("{} items still to go", self.num_pending);
+            }
         }
     }
 }
