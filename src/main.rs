@@ -26,11 +26,12 @@ fn check_output(cmd: &mut Command) -> anyhow::Result<String> {
     Ok(String::from_utf8(output.stdout)?)
 }
 
-// Narrow trait representing the subset of functionality from the pp cmdline tool
-// which we need.
-//
-// See also: https://1password.com/downloads/command-line/
+/// Narrow trait representing the subset of functionality from the pp cmdline tool
+/// which we need.
+///
+/// See also: https://1password.com/downloads/command-line/
 trait Op: Send + Sync + 'static {
+    /// Returns a Vec of uuids of items.
     fn list_items(&self) -> anyhow::Result<Vec<String>>;
     fn get_item(&self, uuid: &str) -> anyhow::Result<String>;
 }
@@ -68,15 +69,29 @@ impl Op for ToolOp {
         )?;
         let json = serde_json::from_str(&output)?;
 
-        match json {
-            serde_json::Value::Array(items) => Ok(items
-                .iter()
-                .map(|item| serde_json::to_string_pretty(item).unwrap())
-                .collect()),
+        let items = match json {
+            serde_json::Value::Array(items) => Ok(items),
             _ => Err(anyhow!(
                 "expected JSON list from 'list items', received something else"
             )),
-        }
+        }?;
+
+        items
+            .iter()
+            .map(|item| match item {
+                serde_json::Value::Object(obj) => {
+                    let uuid = obj.get("uuid");
+                    match uuid {
+                        Some(uuid) => match uuid {
+                            serde_json::Value::String(uuid) => Ok(uuid.into()),
+                            _ => Err(anyhow!("item's uuid key's value is not a string")),
+                        },
+                        None => Err(anyhow!("item has no uuid key")),
+                    }
+                }
+                _ => Err(anyhow!("item is not an object")),
+            })
+            .collect()
     }
 
     fn get_item(&self, uuid: &str) -> anyhow::Result<String> {
@@ -269,13 +284,11 @@ mod test {
 
     #[test]
     fn test_tool_op_list_items_one_item() -> anyhow::Result<()> {
-        let (op, _tool) = optool(b"#!/bin/bash\n echo '[{\"key\": \"value\"}]'");
+        let (op, _tool) = optool(b"#!/bin/bash\n echo '[{\"uuid\": \"value\"}]'");
 
         let items = op.list_items().unwrap();
         assert_eq!(1, items.len());
-
-        let item_json: serde_json::Value = serde_json::from_str(items.get(0).unwrap())?;
-        assert_eq!(serde_json::json!({"key": "value"}), item_json);
+        assert_eq!("value", items.get(0).unwrap());
 
         Ok(())
     }
@@ -283,15 +296,12 @@ mod test {
     #[test]
     fn test_tool_op_list_items_two_items() -> anyhow::Result<()> {
         let (op, _tool) =
-            optool(b"#!/bin/bash\n echo '[{\"key1\": \"value1\"}, {\"key2\": \"value2\"}]'");
+            optool(b"#!/bin/bash\n echo '[{\"uuid\": \"value1\"}, {\"uuid\": \"value2\"}]'");
 
         let items = op.list_items().unwrap();
         assert_eq!(2, items.len());
-
-        let item1: serde_json::Value = serde_json::from_str(items.get(0).unwrap())?;
-        let item2: serde_json::Value = serde_json::from_str(items.get(1).unwrap())?;
-        assert_eq!(serde_json::json!({"key1": "value1"}), item1);
-        assert_eq!(serde_json::json!({"key2": "value2"}), item2);
+        assert_eq!("value1", items.get(0).unwrap());
+        assert_eq!("value2", items.get(1).unwrap());
 
         Ok(())
     }
