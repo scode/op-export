@@ -198,8 +198,8 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
 fn main() -> anyhow::Result<()> {
     let items = fetch_all_items(Arc::new(MockOp {
         items: [
-            ("uuid1".to_owned(), "1body".to_owned()),
-            ("uuid2".to_owned(), "2body".to_owned()),
+            ("uuid1".to_owned(), "{\"uuid\": \"uuid1\"}".to_owned()),
+            ("uuid2".to_owned(), "{\"uuid\": \"uuid2\"}".to_owned()),
         ]
         .iter()
         .cloned()
