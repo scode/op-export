@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
 
+#[derive(Eq, PartialEq, Debug)]
 struct Item {
     uuid: String,
     body: String,
@@ -103,8 +104,24 @@ mod test {
             .collect(),
         }))?;
 
-        // TODO: Finish.
+        let items: std::collections::HashMap<String, super::Item> =
+            items.into_iter().map(|it| (it.uuid.clone(), it)).collect();
+
         assert_eq!(2, items.len());
+        assert_eq!(
+            super::Item {
+                uuid: "uuid1".into(),
+                body: "1body".into(),
+            },
+            *items.get("uuid1").unwrap()
+        );
+        assert_eq!(
+            super::Item {
+                uuid: "uuid2".into(),
+                body: "2body".into()
+            },
+            *items.get("uuid2").unwrap()
+        );
 
         Ok(())
     }
