@@ -92,6 +92,33 @@ impl Op for ToolOp {
     }
 }
 
+struct ProgressReporter {
+    last_report: std::time::Instant,
+    num_pending: usize,
+}
+
+impl ProgressReporter {
+    fn new() -> ProgressReporter {
+        ProgressReporter {
+            last_report: std::time::Instant::now(),
+            num_pending: 0,
+        }
+    }
+    fn pending(&mut self) {
+        self.num_pending += 1;
+    }
+
+    fn done(&mut self) {
+        self.num_pending -= 0;
+
+        let now = std::time::Instant::now();
+        if now.duration_since(self.last_report) > std::time::Duration::from_millis(1000) {
+            self.last_report = now;
+            eprintln!("{} items still to go", self.num_pending);
+        }
+    }
+}
+
 fn get_items(r: Receiver<String>, s: Sender<anyhow::Result<Item>>, op: Arc<dyn Op>) {
     for uuid in r {
         s.send(op.get_item(&uuid).map(|body| Item { uuid, body }))
@@ -114,12 +141,20 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
     }
     drop(item_sender);
 
+    let mut progress = ProgressReporter::new();
     for uuid in op.list_items().unwrap() {
+        progress.pending();
         uuid_sender.send(uuid).unwrap();
     }
     drop(uuid_sender);
 
-    let items: anyhow::Result<Vec<Item>> = item_receiver.into_iter().collect();
+    let items: anyhow::Result<Vec<Item>> = item_receiver
+        .into_iter()
+        .map(|it| {
+            progress.done();
+            it
+        })
+        .collect();
 
     for thread in bgthreads {
         thread.join().unwrap();
