@@ -134,6 +134,18 @@ impl ProgressReporter {
     }
 }
 
+fn validated_item(item: anyhow::Result<Item>) -> anyhow::Result<Item> {
+    match item {
+        Ok(item) => {
+            // ::<Value> is required. With it, inference will cause us to ask
+            // serde to deserialize an Item, which is not what we want.
+            serde_json::from_str::<serde_json::Value>(&item.body)?;
+            Ok(item)
+        }
+        Err(e) => Err(e),
+    }
+}
+
 fn get_items(r: Receiver<String>, s: Sender<anyhow::Result<Item>>, op: Arc<dyn Op>) {
     for uuid in r {
         s.send(op.get_item(&uuid).map(|body| Item { uuid, body }))
@@ -167,7 +179,7 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
         .into_iter()
         .map(|it| {
             progress.done();
-            it
+            validated_item(it)
         })
         .collect();
 
@@ -215,8 +227,8 @@ mod test {
     fn test_fetch_all_items_all_success() -> anyhow::Result<()> {
         let items = super::fetch_all_items(std::sync::Arc::new(super::MockOp {
             items: vec![
-                ("uuid1".to_owned(), "1body".to_owned()),
-                ("uuid2".to_owned(), "2body".to_owned()),
+                ("uuid1".to_owned(), "{\"uuid\": \"uuid1\"}".to_owned()),
+                ("uuid2".to_owned(), "{\"uuid\": \"uuid2\"}".to_owned()),
             ]
             .into_iter()
             .collect(),
@@ -229,14 +241,14 @@ mod test {
         assert_eq!(
             super::Item {
                 uuid: "uuid1".into(),
-                body: "1body".into(),
+                body: "{\"uuid\": \"uuid1\"}".into(),
             },
             *items.get("uuid1").unwrap()
         );
         assert_eq!(
             super::Item {
                 uuid: "uuid2".into(),
-                body: "2body".into()
+                body: "{\"uuid\": \"uuid2\"}".into()
             },
             *items.get("uuid2").unwrap()
         );
