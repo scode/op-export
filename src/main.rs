@@ -103,12 +103,12 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
     let (uuid_sender, uuid_receiver) = unbounded::<String>();
     let (item_sender, item_receiver) = unbounded::<anyhow::Result<Item>>();
 
-    let mut getters: Vec<std::thread::JoinHandle<()>> = vec![];
+    let mut bgthreads: Vec<std::thread::JoinHandle<()>> = vec![];
     for _ in 0..5 {
         let opclone = op.clone();
         let rcvclone = uuid_receiver.clone();
         let sndclone = item_sender.clone();
-        getters.push(thread::spawn(move || {
+        bgthreads.push(thread::spawn(move || {
             get_items(rcvclone, sndclone, opclone);
         }));
     }
@@ -119,11 +119,13 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
     }
     drop(uuid_sender);
 
-    for getter in getters {
-        getter.join().unwrap();
+    let items: anyhow::Result<Vec<Item>> = item_receiver.into_iter().collect();
+
+    for thread in bgthreads {
+        thread.join().unwrap();
     }
 
-    item_receiver.into_iter().collect()
+    items
 }
 
 fn main() -> anyhow::Result<()> {
