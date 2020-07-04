@@ -3,6 +3,7 @@ use crossbeam::channel::unbounded;
 use crossbeam::channel::Receiver;
 use crossbeam::channel::Sender;
 use std::collections::HashMap;
+use std::process::Command;
 use std::sync::Arc;
 use std::thread;
 
@@ -10,6 +11,19 @@ use std::thread;
 struct Item {
     uuid: String,
     body: String,
+}
+
+fn check_output(cmd: &mut Command) -> anyhow::Result<String> {
+    let output = cmd.output()?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "cmd exited unsuccessfully: stdout: {} stderr: {}",
+            String::from_utf8(output.stdout)?,
+            String::from_utf8(output.stderr)?,
+        ));
+    }
+
+    Ok(String::from_utf8(output.stdout)?)
 }
 
 // Narrow trait representing the subset of functionality from the pp cmdline tool
@@ -36,6 +50,39 @@ impl Op for MockOp {
             Some(body) => Ok(body.to_owned()),
             None => Err(anyhow!("no item by this uuid: {}", uuid)),
         }
+    }
+}
+
+struct ToolOp {
+    /// Path to the `op` binary to use.
+    path: String,
+}
+
+impl Op for ToolOp {
+    fn list_items(&self) -> anyhow::Result<Vec<String>> {
+        let output = check_output(Command::new(self.path.clone()).arg("list").arg("items"))?;
+        let json = serde_json::from_str(&output)?;
+
+        match json {
+            serde_json::Value::Array(items) => Ok(items
+                .iter()
+                .map(|item| serde_json::to_string_pretty(item).unwrap())
+                .collect()),
+            _ => Err(anyhow!(
+                "expected JSON list from 'list items', received something else"
+            )),
+        }
+    }
+
+    fn get_item(&self, uuid: &str) -> anyhow::Result<String> {
+        let output = check_output(
+            Command::new(self.path.clone())
+                .arg("get")
+                .arg("item")
+                .arg(uuid),
+        )?;
+
+        Ok(output)
     }
 }
 
@@ -91,7 +138,10 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
 mod test {
+    use super::Op;
+
     #[test]
     fn test_fetch_all_items_all_no_items() -> anyhow::Result<()> {
         let items = super::fetch_all_items(std::sync::Arc::new(super::MockOp {
@@ -132,6 +182,98 @@ mod test {
             },
             *items.get("uuid2").unwrap()
         );
+
+        Ok(())
+    }
+
+    struct MockTool {
+        file: tempfile::NamedTempFile,
+    }
+
+    impl MockTool {
+        fn new(body: &[u8]) -> MockTool {
+            let mut tool = MockTool {
+                file: tempfile::NamedTempFile::new().unwrap(),
+            };
+            use std::io::prelude::*;
+            tool.file.as_file_mut().write_all(&body).unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(tool.file.path()).unwrap().permissions();
+            perms.set_mode(0o700);
+            std::fs::set_permissions(tool.file.path(), perms).unwrap();
+            tool
+        }
+    }
+
+    fn optool(tool_body: &[u8]) -> (super::ToolOp, MockTool) {
+        let tool = MockTool::new(tool_body);
+        let op = super::ToolOp {
+            path: tool.file.path().to_str().unwrap().into(),
+        };
+
+        (op, tool)
+    }
+
+    #[test]
+    fn test_tool_op_list_items_empty() -> anyhow::Result<()> {
+        let (op, _tool) = optool(b"#!/bin/bash\n echo '[]'");
+
+        let items = op.list_items().unwrap();
+        assert_eq!(0, items.len());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_tool_op_list_items_one_item() -> anyhow::Result<()> {
+        let (op, _tool) = optool(b"#!/bin/bash\n echo '[{\"key\": \"value\"}]'");
+
+        let items = op.list_items().unwrap();
+        assert_eq!(1, items.len());
+
+        let item_json: serde_json::Value = serde_json::from_str(items.get(0).unwrap())?;
+        assert_eq!(serde_json::json!({"key": "value"}), item_json);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_tool_op_list_items_not_json() -> anyhow::Result<()> {
+        let (op, _tool) = optool(b"#!/bin/bash\n echo 'this is not json'");
+
+        // XXX: should look for specific error
+        assert!(op.list_items().is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_tool_op_list_items_exit1() -> anyhow::Result<()> {
+        let (op, _tool) = optool(b"#!/bin/bash\nexit 1");
+
+        // XXX: should look for specific error
+        assert!(op.list_items().is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_tool_op_get_item_success() -> anyhow::Result<()> {
+        let (op, _tool) = optool(b"#!/bin/bash\n echo '{\"key\": \"value\"}'");
+
+        let item = op.get_item("uuid").unwrap();
+        let item_json: serde_json::Value = serde_json::from_str(&item)?;
+        assert_eq!(serde_json::json!({"key": "value"}), item_json);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_tool_op_get_item_exit1() -> anyhow::Result<()> {
+        let (op, _tool) = optool(b"#!/bin/bash\nexit 1");
+
+        // XXX: should look for specific error
+        assert!(op.get_item("uuid").is_err());
 
         Ok(())
     }
