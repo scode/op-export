@@ -194,9 +194,9 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
     drop(item_sender);
 
     let mut progress = ProgressReporter::new();
-    for uuid in op.list_items().unwrap() {
+    for uuid in op.list_items()? {
         progress.pending();
-        uuid_sender.send(uuid).unwrap();
+        uuid_sender.send(uuid)?;
     }
     drop(uuid_sender);
 
@@ -213,7 +213,12 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
         .collect();
 
     for thread in bgthreads {
-        thread.join().unwrap();
+        match thread.join() {
+            Ok(_) => (),
+            Err(e) => {
+                return Err(anyhow!("thread died: {:?}", e));
+            }
+        }
     }
 
     items
