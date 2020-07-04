@@ -54,13 +54,18 @@ impl Op for MockOp {
 }
 
 struct ToolOp {
-    /// Path to the `op` binary to use.
-    path: String,
+    /// Command to run (e.g. "op").
+    command: String,
 }
 
 impl Op for ToolOp {
     fn list_items(&self) -> anyhow::Result<Vec<String>> {
-        let output = check_output(Command::new(self.path.clone()).arg("list").arg("items"))?;
+        let output = check_output(
+            Command::new("/usr/bin/env")
+                .arg(self.command.clone())
+                .arg("list")
+                .arg("items"),
+        )?;
         let json = serde_json::from_str(&output)?;
 
         match json {
@@ -76,7 +81,8 @@ impl Op for ToolOp {
 
     fn get_item(&self, uuid: &str) -> anyhow::Result<String> {
         let output = check_output(
-            Command::new(self.path.clone())
+            Command::new("/usr/bin/env")
+                .arg(self.command.clone())
                 .arg("get")
                 .arg("item")
                 .arg(uuid),
@@ -208,7 +214,7 @@ mod test {
     fn optool(tool_body: &[u8]) -> (super::ToolOp, MockTool) {
         let tool = MockTool::new(tool_body);
         let op = super::ToolOp {
-            path: tool.file.path().to_str().unwrap().into(),
+            command: tool.file.path().to_str().unwrap().into(),
         };
 
         (op, tool)
