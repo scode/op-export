@@ -37,8 +37,14 @@ trait Op: Send + Sync + 'static {
 }
 
 struct MockOp {
-    // uuid -> item body
-    items: HashMap<String, String>,
+    // uuid -> item body result. If the result is absent, it is taken to be
+    // a mock error.
+    //
+    // (The value type in the map is not anyhow::Result<String> because of
+    // https://github.com/dtolnay/anyhow/issues/7 preventing cloning the error, so
+    // we have to use something else. Until we care about the types of errors in
+    // tests, an option is fine.)
+    items: HashMap<String, std::option::Option<String>>,
 }
 
 impl Op for MockOp {
@@ -48,8 +54,11 @@ impl Op for MockOp {
 
     fn get_item(&self, uuid: &str) -> anyhow::Result<String> {
         match self.items.get(uuid) {
-            Some(body) => Ok(body.to_owned()),
-            None => Err(anyhow!("no item by this uuid: {}", uuid)),
+            Some(body) => match body {
+                Some(body) => Ok(body.to_owned()),
+                None => Err(anyhow!("mock error for uuid {}", uuid)),
+            },
+            None => Err(anyhow!("no uuid {} in mock", uuid)),
         }
     }
 }
@@ -237,8 +246,8 @@ mod test {
     fn test_fetch_all_items_all_success() -> anyhow::Result<()> {
         let items = super::fetch_all_items(std::sync::Arc::new(super::MockOp {
             items: vec![
-                ("uuid1".to_owned(), "{\"uuid\": \"uuid1\"}".to_owned()),
-                ("uuid2".to_owned(), "{\"uuid\": \"uuid2\"}".to_owned()),
+                ("uuid1".to_owned(), Some("{\"uuid\": \"uuid1\"}".to_owned())),
+                ("uuid2".to_owned(), Some("{\"uuid\": \"uuid2\"}".to_owned())),
             ]
             .into_iter()
             .collect(),
