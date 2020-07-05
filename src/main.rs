@@ -215,7 +215,7 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
     let (item_sender, item_receiver) = unbounded::<anyhow::Result<Item>>();
 
     let mut bgthreads: Vec<std::thread::JoinHandle<()>> = vec![];
-    for _ in 0..5 {
+    for _ in 0..2 {
         let opclone = op.clone();
         let rcvclone = uuid_receiver.clone();
         let sndclone = item_sender.clone();
