@@ -1,0 +1,20 @@
+name: CI
+on: [push]
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+
+    - name: Build
+      run: cargo build
+
+    - name: Test
+      run: cargo test
+
+    - name: Lint
+      run: cargo clippy
+
+    - name: Format
+      run: cargo fmt -- --check
