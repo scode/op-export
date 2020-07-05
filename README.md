@@ -5,6 +5,7 @@ A tool to export items from 1password into a human and tool readable *unencrypte
 ## Installation
 
 * Install `op`, the official command line tool [provided by 1Password](https://1password.com/downloads/command-line/).
+  At the time of this writing, version 0.9.3 has been tested.
 * Install rust by following the instructions at https://rustup.rs/
 * Install by running `cargo install --path .`
 
