@@ -1,6 +1,6 @@
 # op-export
 
-A tool to export items from 1password into a human and tool readable *unencrypted* format. Combine with [saltybox](https://github.com/scode/saltybox) to get offline encrypted backups.
+A tool to export items from 1password into a human and tool readable *unencrypted* format. Combine with [saltybox](https://github.com/scode/saltybox) to get an offline encrypted backup of your vault.
 
 ## Installation
 
