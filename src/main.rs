@@ -160,10 +160,10 @@ impl Op for ToolOp {
                         rand::thread_rng().gen_range(tries * 1000, (tries + 1) * 1000);
 
                     if self.backoff {
-                        println!("backing off: {}ms", backoff_time);
+                        println!("get item: backing off: {}ms", backoff_time);
                         std::thread::sleep(std::time::Duration::from_millis(backoff_time));
                     } else {
-                        println!("would have backed off: {}ms", backoff_time);
+                        println!("get item: would have backed off: {}ms", backoff_time);
                     }
                 }
             }
@@ -225,6 +225,11 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
     }
     drop(item_sender);
 
+    eprintln!("listing items to export");
+    let item_uuids = op.list_items()?;
+
+    eprintln!("{} total items - initiating fetch", item_uuids.len());
+
     let mut progress = ProgressReporter::new();
     for uuid in op.list_items()? {
         progress.pending();
@@ -264,6 +269,8 @@ fn export(op_path: &str, dest_path: &str) -> anyhow::Result<()> {
     let pretty_printed = serde_json::to_string_pretty(&json)?;
 
     std::fs::write(dest_path, pretty_printed)?;
+
+    eprintln!("items written to {}", dest_path);
 
     Ok(())
 }
