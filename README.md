@@ -23,7 +23,9 @@ Export all items in your vault to `~/tmp/1p.json` (will *not be encrypted*):
 op-export -o ~/tmp/1p.json
 ```
 
-Although `op-export` tries hard to let you know if anything goes wrong, it is recommended that the resulting file be inspected to ensure it looks reasonable. If `op get item` gives us valid JSON, we assume success and accept the JSON as a valid vault item. The `op` command has some strange failure modes and it is not clear whether it is meant to be used by automated tooling.
+Although `op-export` tries hard to let you know if anything goes wrong, it is recommended that the resulting file be inspected to ensure it looks reasonable.
+
+`op-export` operates by invoking `op list items` followed by using `op get item` to fetch each item listed. If `op get item` gives us valid JSON, we assume success and accept the JSON as a valid vault item.
 
 ## Troubleshooting
 
