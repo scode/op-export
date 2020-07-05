@@ -261,7 +261,11 @@ fn main() -> anyhow::Result<()> {
     let items = fetch_all_items(Arc::new(tool))?;
 
     for item in items {
-        println!("{}: {}", item.uuid, item.json);
+        println!(
+            "{}: {}",
+            item.uuid,
+            serde_json::to_string_pretty(&item.json).unwrap(),
+        );
     }
 
     Ok(())
