@@ -257,7 +257,7 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
 }
 
 fn main() -> anyhow::Result<()> {
-    let tool = ToolOp::new("/tmp/fakeop".into());
+    let tool = ToolOp::new("op".into());
     let items = fetch_all_items(Arc::new(tool))?;
 
     for item in items {
