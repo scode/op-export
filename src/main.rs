@@ -10,7 +10,7 @@ use std::thread;
 #[derive(Eq, PartialEq, Debug)]
 struct Item {
     uuid: String,
-    body: String,
+    json: serde_json::Value,
 }
 
 fn check_output(cmd: &mut Command) -> anyhow::Result<String> {
@@ -33,7 +33,7 @@ fn check_output(cmd: &mut Command) -> anyhow::Result<String> {
 trait Op: Send + Sync + 'static {
     /// Returns a Vec of uuids of items.
     fn list_items(&self) -> anyhow::Result<Vec<String>>;
-    fn get_item(&self, uuid: &str) -> anyhow::Result<String>;
+    fn get_item(&self, uuid: &str) -> anyhow::Result<serde_json::Value>;
 }
 
 struct MockOp {
@@ -44,7 +44,7 @@ struct MockOp {
     // https://github.com/dtolnay/anyhow/issues/7 preventing cloning the error, so
     // we have to use something else. Until we care about the types of errors in
     // tests, an option is fine.)
-    items: HashMap<String, std::option::Option<String>>,
+    items: HashMap<String, std::option::Option<serde_json::Value>>,
 }
 
 impl Op for MockOp {
@@ -52,7 +52,7 @@ impl Op for MockOp {
         Ok(self.items.keys().map(|s| s.to_owned()).collect())
     }
 
-    fn get_item(&self, uuid: &str) -> anyhow::Result<String> {
+    fn get_item(&self, uuid: &str) -> anyhow::Result<serde_json::Value> {
         match self.items.get(uuid) {
             Some(body) => match body {
                 Some(body) => Ok(body.to_owned()),
@@ -87,6 +87,16 @@ impl ToolOp {
             command,
             backoff: false,
         }
+    }
+}
+
+fn parsed_as_json(s: anyhow::Result<String>) -> anyhow::Result<serde_json::Value> {
+    match s {
+        Ok(s) => {
+            let value = serde_json::from_str::<serde_json::Value>(&s)?;
+            Ok(value)
+        }
+        Err(e) => Err(e),
     }
 }
 
@@ -125,21 +135,21 @@ impl Op for ToolOp {
             .collect()
     }
 
-    fn get_item(&self, uuid: &str) -> anyhow::Result<String> {
+    fn get_item(&self, uuid: &str) -> anyhow::Result<serde_json::Value> {
         let mut tries = 0;
 
         loop {
             tries += 1;
 
-            let output = check_output(
+            let json = parsed_as_json(check_output(
                 Command::new("/usr/bin/env")
                     .arg(self.command.clone())
                     .arg("get")
                     .arg("item")
                     .arg(uuid),
-            );
-            match output {
-                Ok(output) => return Ok(output),
+            ));
+            match json {
+                Ok(json) => return Ok(json),
                 Err(e) => {
                     if tries == 5 {
                         return Err(e);
@@ -190,26 +200,9 @@ impl ProgressReporter {
     }
 }
 
-fn validated_item(item: anyhow::Result<Item>) -> anyhow::Result<Item> {
-    // Validate that the item body is JSON. We are unopinionated about the structure
-    // of it beyond it being JSON.
-    //
-    // Is there a more idiomatic way of doing this before flatten lands?
-    // (https://github.com/rust-lang/rust/issues/70142)
-    match item {
-        Ok(item) => {
-            // ::<Value> is required. With it, inference will cause us to ask
-            // serde to deserialize an Item, which is not what we want.
-            serde_json::from_str::<serde_json::Value>(&item.body)?;
-            Ok(item)
-        }
-        Err(e) => Err(e),
-    }
-}
-
 fn get_items(r: Receiver<String>, s: Sender<anyhow::Result<Item>>, op: Arc<dyn Op>) {
     for uuid in r {
-        if s.send(op.get_item(&uuid).map(|body| Item { uuid, body }))
+        if s.send(op.get_item(&uuid).map(|json| Item { uuid, json }))
             .is_err()
         {
             break;
@@ -247,7 +240,7 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
         .into_iter()
         .map(|it| {
             progress.done();
-            validated_item(it)
+            it
         })
         .collect();
 
@@ -264,11 +257,11 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
 }
 
 fn main() -> anyhow::Result<()> {
-    let tool = ToolOp::new("op".into());
+    let tool = ToolOp::new("/tmp/fakeop".into());
     let items = fetch_all_items(Arc::new(tool))?;
 
     for item in items {
-        println!("{}: {}", item.uuid, item.body);
+        println!("{}: {}", item.uuid, item.json);
     }
 
     Ok(())
@@ -277,6 +270,7 @@ fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod test {
     use super::Op;
+    use serde_json::json;
 
     #[test]
     fn test_fetch_all_items_all_no_items() -> anyhow::Result<()> {
@@ -293,8 +287,8 @@ mod test {
     fn test_fetch_all_items_all_success() -> anyhow::Result<()> {
         let items = super::fetch_all_items(std::sync::Arc::new(super::MockOp {
             items: vec![
-                ("uuid1".to_owned(), Some("{\"uuid\": \"uuid1\"}".to_owned())),
-                ("uuid2".to_owned(), Some("{\"uuid\": \"uuid2\"}".to_owned())),
+                ("uuid1".to_owned(), Some(json!({"uuid": "uuid1"}))),
+                ("uuid2".to_owned(), Some(json!({"uuid": "uuid2"}))),
             ]
             .into_iter()
             .collect(),
@@ -307,14 +301,14 @@ mod test {
         assert_eq!(
             super::Item {
                 uuid: "uuid1".into(),
-                body: "{\"uuid\": \"uuid1\"}".into(),
+                json: json!({"uuid": "uuid1"}),
             },
             *items.get("uuid1").unwrap()
         );
         assert_eq!(
             super::Item {
                 uuid: "uuid2".into(),
-                body: "{\"uuid\": \"uuid2\"}".into()
+                json: json!({"uuid": "uuid2"}),
             },
             *items.get("uuid2").unwrap()
         );
@@ -326,9 +320,9 @@ mod test {
     fn test_fetch_all_items_some_failed() -> anyhow::Result<()> {
         let items = super::fetch_all_items(std::sync::Arc::new(super::MockOp {
             items: vec![
-                ("uuid1".to_owned(), Some("{\"uuid\": \"uuid1\"}".to_owned())),
+                ("uuid1".to_owned(), Some(json!({"uuid": "uuid1"}))),
                 ("uuid2".to_owned(), None),
-                ("uuid3".to_owned(), Some("{\"uuid\": \"uuid3\"}".to_owned())),
+                ("uuid3".to_owned(), Some(json!({"uuid": "uuid3"}))),
             ]
             .into_iter()
             .collect(),
@@ -428,8 +422,7 @@ mod test {
         let (op, _tool) = optool(b"#!/bin/bash\n echo '{\"key\": \"value\"}'");
 
         let item = op.get_item("uuid").unwrap();
-        let item_json: serde_json::Value = serde_json::from_str(&item)?;
-        assert_eq!(serde_json::json!({"key": "value"}), item_json);
+        assert_eq!(serde_json::json!({"key": "value"}), item);
 
         Ok(())
     }
