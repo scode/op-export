@@ -256,6 +256,18 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
     items
 }
 
+fn export(op_path: &str, dest_path: &str) -> anyhow::Result<()> {
+    let tool = ToolOp::new(op_path.to_owned());
+    let items = fetch_all_items(Arc::new(tool))?;
+
+    let json = serde_json::Value::Array(items.into_iter().map(|it| it.json).collect());
+    let pretty_printed = serde_json::to_string_pretty(&json)?;
+
+    std::fs::write(dest_path, pretty_printed)?;
+
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     use clap::App;
     use clap::Arg;
@@ -268,19 +280,21 @@ fn main() -> anyhow::Result<()> {
                 .takes_value(true)
                 .help("The path of the op binary to use (default: op)."),
         )
+        .arg(
+            Arg::with_name("output")
+                .short("o")
+                .long("output")
+                .value_name("PATH")
+                .takes_value(true)
+                .required(true)
+                .help("The path to which to write the export in JSON format (required)."),
+        )
         .get_matches();
 
     let op_path = matches.value_of("op").unwrap_or("op");
-    let tool = ToolOp::new(op_path.to_owned());
-    let items = fetch_all_items(Arc::new(tool))?;
+    let dest_path = matches.value_of("output").unwrap();
 
-    for item in items {
-        println!(
-            "{}: {}",
-            item.uuid,
-            serde_json::to_string_pretty(&item.json).unwrap(),
-        );
-    }
+    export(op_path, dest_path)?;
 
     Ok(())
 }
