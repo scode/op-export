@@ -257,7 +257,21 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
 }
 
 fn main() -> anyhow::Result<()> {
-    let tool = ToolOp::new("op".into());
+    use clap::App;
+    use clap::Arg;
+
+    let matches = App::new("op-export")
+        .arg(
+            Arg::with_name("op")
+                .long("op")
+                .value_name("PATH")
+                .takes_value(true)
+                .help("The path of the op binary to use (default: op)."),
+        )
+        .get_matches();
+
+    let op_path = matches.value_of("op").unwrap_or("op");
+    let tool = ToolOp::new(op_path.to_owned());
     let items = fetch_all_items(Arc::new(tool))?;
 
     for item in items {
