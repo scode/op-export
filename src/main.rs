@@ -392,27 +392,33 @@ mod test {
     }
 
     struct MockTool {
-        file: tempfile::NamedTempFile,
+        path: tempfile::TempPath,
     }
 
     impl MockTool {
         fn new(body: &[u8]) -> MockTool {
-            let mut tool = MockTool {
-                file: tempfile::NamedTempFile::new().unwrap(),
-            };
             use std::io::prelude::*;
-            tool.file.as_file_mut().write_all(&body).unwrap();
+
+            let mut file = tempfile::NamedTempFile::new().unwrap();
+
+            file.as_file_mut().write_all(&body).unwrap();
             use std::os::unix::fs::PermissionsExt;
-            let mut perms = std::fs::metadata(tool.file.path()).unwrap().permissions();
+            let mut perms = std::fs::metadata(file.path()).unwrap().permissions();
             perms.set_mode(0o700);
-            std::fs::set_permissions(tool.file.path(), perms).unwrap();
-            tool
+            std::fs::set_permissions(file.path(), perms).unwrap();
+
+            // Turning it into a TempPath is important. On Linux (but not MacOS), we
+            // must close the underlying file before there is an attempt to execute
+            // it - or executation will fail with "text file busy".
+            MockTool {
+                path: file.into_temp_path(),
+            }
         }
     }
 
     fn optool(tool_body: &[u8]) -> (super::ToolOp, MockTool) {
         let tool = MockTool::new(tool_body);
-        let op = super::ToolOp::new_without_backoff(tool.file.path().to_str().unwrap().into());
+        let op = super::ToolOp::new_without_backoff(tool.path.to_str().unwrap().into());
 
         (op, tool)
     }
