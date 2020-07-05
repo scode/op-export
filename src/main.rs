@@ -261,16 +261,31 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
     items
 }
 
+fn uuid_of_item(item: &serde_json::Value) -> anyhow::Result<String> {
+    match item {
+        serde_json::Value::Object(obj) => match obj.get("uuid") {
+            Some(uuid) => match uuid {
+                serde_json::Value::String(uuid) => Ok(uuid.to_owned()),
+                _ => Err(anyhow!("item's uuid was not a string")),
+            },
+            None => Err(anyhow!("item did not have a uuid")),
+        },
+        _ => Err(anyhow!("item not an object")),
+    }
+}
+
 fn export(op_path: &str, dest_path: &str) -> anyhow::Result<()> {
     let tool = ToolOp::new(op_path.to_owned());
-    let items = fetch_all_items(Arc::new(tool))?;
+    let mut items = fetch_all_items(Arc::new(tool))?;
+
+    items.sort_by_key(|item| uuid_of_item(&item.json).unwrap());
 
     let json = serde_json::Value::Array(items.into_iter().map(|it| it.json).collect());
     let pretty_printed = serde_json::to_string_pretty(&json)?;
 
     std::fs::write(dest_path, pretty_printed)?;
 
-    eprintln!("items written to {}", dest_path);
+    eprintln!("items written to {} (sorted by uuid)", dest_path);
 
     Ok(())
 }
