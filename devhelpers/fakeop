@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# Intented to take the place of the op command when playing around manually
+# outside of unit tests. It's intended as a template for quick experimentation;
+# using it as-is is of limited utility.
+
+set -euo pipefail
+
+if [[ $1 == list ]]; then
+    echo '['
+    for s in $(seq 10); do
+        echo '{"uuid": "uuid'"$s"'"},'
+    done
+    echo '{"uuid": "uuidinf"}'
+    echo ']'
+elif [[ $1 == get ]]; then
+    sleep 1
+
+    # Flip to 1 -> partial failure.
+    if 0; then
+        if [[ $3 == uuid3 ]]; then
+            exit 1
+        fi
+    fi
+
+    if [[ $3 == uuid1 ]]; then
+        echo '{"uuid": "uuid1"}'
+    else
+        echo '{"uuid": "uuid2"}'
+    fi
+else
+    exit 1
+fi
