@@ -159,7 +159,7 @@ impl Op for ToolOp {
 
                     use rand::Rng;
                     let backoff_time =
-                        rand::thread_rng().gen_range(tries * 3000, (tries + 1) * 3000);
+                        rand::thread_rng().gen_range((tries * 3000)..((tries + 1) * 3000));
 
                     if self.backoff {
                         println!("get item: backing off: {}ms", backoff_time);
