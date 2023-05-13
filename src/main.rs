@@ -9,7 +9,7 @@ use std::thread;
 
 #[derive(Eq, PartialEq, Debug)]
 struct Item {
-    uuid: String,
+    id: String,
     json: serde_json::Value,
 }
 
@@ -31,13 +31,13 @@ fn check_output(cmd: &mut Command) -> anyhow::Result<String> {
 ///
 /// See also: https://1password.com/downloads/command-line/
 trait Op: Send + Sync + 'static {
-    /// Returns a Vec of uuids of items.
+    /// Returns a Vec of ids of items.
     fn list_items(&self) -> anyhow::Result<Vec<String>>;
-    fn get_item(&self, uuid: &str) -> anyhow::Result<serde_json::Value>;
+    fn get_item(&self, id: &str) -> anyhow::Result<serde_json::Value>;
 }
 
 struct MockOp {
-    // uuid -> item body result. If the result is absent, it is taken to be
+    // id -> item body result. If the result is absent, it is taken to be
     // a mock error.
     //
     // (The value type in the map is not anyhow::Result<String> because of
@@ -52,13 +52,13 @@ impl Op for MockOp {
         Ok(self.items.keys().map(|s| s.to_owned()).collect())
     }
 
-    fn get_item(&self, uuid: &str) -> anyhow::Result<serde_json::Value> {
-        match self.items.get(uuid) {
+    fn get_item(&self, id: &str) -> anyhow::Result<serde_json::Value> {
+        match self.items.get(id) {
             Some(body) => match body {
                 Some(body) => Ok(body.to_owned()),
-                None => Err(anyhow!("mock error for uuid {}", uuid)),
+                None => Err(anyhow!("mock error for id {}", id)),
             },
-            None => Err(anyhow!("no uuid {} in mock", uuid)),
+            None => Err(anyhow!("no id {} in mock", id)),
         }
     }
 }
@@ -105,15 +105,16 @@ impl Op for ToolOp {
         let output = check_output(
             Command::new("/usr/bin/env")
                 .arg(self.command.clone())
+                .arg("items")
                 .arg("list")
-                .arg("items"),
+                .arg("--format=json"),
         )?;
         let json = serde_json::from_str(&output)?;
 
         let items = match json {
             serde_json::Value::Array(items) => Ok(items),
             _ => Err(anyhow!(
-                "expected JSON list from 'list items', received something else"
+                "expected JSON list from 'items list', received something else"
             )),
         }?;
 
@@ -121,13 +122,13 @@ impl Op for ToolOp {
             .iter()
             .map(|item| match item {
                 serde_json::Value::Object(obj) => {
-                    let uuid = obj.get("uuid");
-                    match uuid {
-                        Some(uuid) => match uuid {
-                            serde_json::Value::String(uuid) => Ok(uuid.into()),
-                            _ => Err(anyhow!("item's uuid key's value is not a string")),
+                    let id = obj.get("id");
+                    match id {
+                        Some(id) => match id {
+                            serde_json::Value::String(id) => Ok(id.into()),
+                            _ => Err(anyhow!("item's id key's value is not a string")),
                         },
-                        None => Err(anyhow!("item has no uuid key")),
+                        None => Err(anyhow!("item has no id key")),
                     }
                 }
                 _ => Err(anyhow!("item is not an object")),
@@ -135,7 +136,7 @@ impl Op for ToolOp {
             .collect()
     }
 
-    fn get_item(&self, uuid: &str) -> anyhow::Result<serde_json::Value> {
+    fn get_item(&self, id: &str) -> anyhow::Result<serde_json::Value> {
         let mut tries = 0;
 
         loop {
@@ -144,9 +145,10 @@ impl Op for ToolOp {
             let json = parsed_as_json(check_output(
                 Command::new("/usr/bin/env")
                     .arg(self.command.clone())
+                    .arg("items")
                     .arg("get")
-                    .arg("item")
-                    .arg(uuid),
+                    .arg("--format=json")
+                    .arg(id),
             ));
             match json {
                 Ok(json) => return Ok(json),
@@ -201,8 +203,8 @@ impl ProgressReporter {
 }
 
 fn get_items(r: Receiver<String>, s: Sender<anyhow::Result<Item>>, op: Arc<dyn Op>) {
-    for uuid in r {
-        if s.send(op.get_item(&uuid).map(|json| Item { uuid, json }))
+    for id in r {
+        if s.send(op.get_item(&id).map(|json| Item { id, json }))
             .is_err()
         {
             break;
@@ -211,13 +213,13 @@ fn get_items(r: Receiver<String>, s: Sender<anyhow::Result<Item>>, op: Arc<dyn O
 }
 
 fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
-    let (uuid_sender, uuid_receiver) = unbounded::<String>();
+    let (id_sender, id_receiver) = unbounded::<String>();
     let (item_sender, item_receiver) = unbounded::<anyhow::Result<Item>>();
 
     let mut bgthreads: Vec<std::thread::JoinHandle<()>> = vec![];
     for _ in 0..2 {
         let opclone = op.clone();
-        let rcvclone = uuid_receiver.clone();
+        let rcvclone = id_receiver.clone();
         let sndclone = item_sender.clone();
         bgthreads.push(thread::spawn(move || {
             get_items(rcvclone, sndclone, opclone);
@@ -226,16 +228,16 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
     drop(item_sender);
 
     eprintln!("listing items to export");
-    let item_uuids = op.list_items()?;
+    let item_ids = op.list_items()?;
 
-    eprintln!("{} total items - initiating fetch", item_uuids.len());
+    eprintln!("{} total items - initiating fetch", item_ids.len());
 
     let mut progress = ProgressReporter::new();
-    for uuid in op.list_items()? {
+    for id in op.list_items()? {
         progress.pending();
-        uuid_sender.send(uuid)?;
+        id_sender.send(id)?;
     }
-    drop(uuid_sender);
+    drop(id_sender);
 
     // Note: This pipeline will shortcircuit during collect() if an error is encountered,
     // thus closing the underlying channel since item_receiver will be consumed.
@@ -261,14 +263,14 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
     items
 }
 
-fn uuid_of_item(item: &serde_json::Value) -> anyhow::Result<String> {
+fn id_of_item(item: &serde_json::Value) -> anyhow::Result<String> {
     match item {
-        serde_json::Value::Object(obj) => match obj.get("uuid") {
-            Some(uuid) => match uuid {
-                serde_json::Value::String(uuid) => Ok(uuid.to_owned()),
-                _ => Err(anyhow!("item's uuid was not a string")),
+        serde_json::Value::Object(obj) => match obj.get("id") {
+            Some(id) => match id {
+                serde_json::Value::String(id) => Ok(id.to_owned()),
+                _ => Err(anyhow!("item's id was not a string")),
             },
-            None => Err(anyhow!("item did not have a uuid")),
+            None => Err(anyhow!("item did not have an id")),
         },
         _ => Err(anyhow!("item not an object")),
     }
@@ -278,14 +280,14 @@ fn export(op_path: &str, dest_path: &str) -> anyhow::Result<()> {
     let tool = ToolOp::new(op_path.to_owned());
     let mut items = fetch_all_items(Arc::new(tool))?;
 
-    items.sort_by_key(|item| uuid_of_item(&item.json).unwrap());
+    items.sort_by_key(|item| id_of_item(&item.json).unwrap());
 
     let json = serde_json::Value::Array(items.into_iter().map(|it| it.json).collect());
     let pretty_printed = serde_json::to_string_pretty(&json)?;
 
     std::fs::write(dest_path, pretty_printed)?;
 
-    eprintln!("items written to {} (sorted by uuid)", dest_path);
+    eprintln!("items written to {} (sorted by id)", dest_path);
 
     Ok(())
 }
@@ -341,30 +343,30 @@ mod test {
     fn test_fetch_all_items_all_success() -> anyhow::Result<()> {
         let items = super::fetch_all_items(std::sync::Arc::new(super::MockOp {
             items: vec![
-                ("uuid1".to_owned(), Some(json!({"uuid": "uuid1"}))),
-                ("uuid2".to_owned(), Some(json!({"uuid": "uuid2"}))),
+                ("id1".to_owned(), Some(json!({"id": "id1"}))),
+                ("id2".to_owned(), Some(json!({"id": "id2"}))),
             ]
             .into_iter()
             .collect(),
         }))?;
 
         let items: std::collections::HashMap<String, super::Item> =
-            items.into_iter().map(|it| (it.uuid.clone(), it)).collect();
+            items.into_iter().map(|it| (it.id.clone(), it)).collect();
 
         assert_eq!(2, items.len());
         assert_eq!(
             super::Item {
-                uuid: "uuid1".into(),
-                json: json!({"uuid": "uuid1"}),
+                id: "id1".into(),
+                json: json!({"id": "id1"}),
             },
-            *items.get("uuid1").unwrap()
+            *items.get("id1").unwrap()
         );
         assert_eq!(
             super::Item {
-                uuid: "uuid2".into(),
-                json: json!({"uuid": "uuid2"}),
+                id: "id2".into(),
+                json: json!({"id": "id2"}),
             },
-            *items.get("uuid2").unwrap()
+            *items.get("id2").unwrap()
         );
 
         Ok(())
@@ -374,9 +376,9 @@ mod test {
     fn test_fetch_all_items_some_failed() -> anyhow::Result<()> {
         let items = super::fetch_all_items(std::sync::Arc::new(super::MockOp {
             items: vec![
-                ("uuid1".to_owned(), Some(json!({"uuid": "uuid1"}))),
-                ("uuid2".to_owned(), None),
-                ("uuid3".to_owned(), Some(json!({"uuid": "uuid3"}))),
+                ("id1".to_owned(), Some(json!({"id": "id1"}))),
+                ("id2".to_owned(), None),
+                ("id3".to_owned(), Some(json!({"id": "id3"}))),
             ]
             .into_iter()
             .collect(),
@@ -385,7 +387,7 @@ mod test {
         match items {
             Ok(_) => Err(anyhow::anyhow!("fetch should have failed")),
             Err(e) => {
-                assert_eq!("mock error for uuid uuid2", e.to_string());
+                assert_eq!("mock error for id id2", e.to_string());
                 Ok(())
             }
         }
@@ -435,7 +437,7 @@ mod test {
 
     #[test]
     fn test_tool_op_list_items_one_item() -> anyhow::Result<()> {
-        let (op, _tool) = optool(b"#!/bin/bash\n echo '[{\"uuid\": \"value\"}]'");
+        let (op, _tool) = optool(b"#!/bin/bash\n echo '[{\"id\": \"value\"}]'");
 
         let items = op.list_items().unwrap();
         assert_eq!(1, items.len());
@@ -447,7 +449,7 @@ mod test {
     #[test]
     fn test_tool_op_list_items_two_items() -> anyhow::Result<()> {
         let (op, _tool) =
-            optool(b"#!/bin/bash\n echo '[{\"uuid\": \"value1\"}, {\"uuid\": \"value2\"}]'");
+            optool(b"#!/bin/bash\n echo '[{\"id\": \"value1\"}, {\"id\": \"value2\"}]'");
 
         let items = op.list_items().unwrap();
         assert_eq!(2, items.len());
@@ -481,7 +483,7 @@ mod test {
     fn test_tool_op_get_item_success() -> anyhow::Result<()> {
         let (op, _tool) = optool(b"#!/bin/bash\n echo '{\"key\": \"value\"}'");
 
-        let item = op.get_item("uuid").unwrap();
+        let item = op.get_item("id").unwrap();
         assert_eq!(serde_json::json!({"key": "value"}), item);
 
         Ok(())
@@ -492,23 +494,23 @@ mod test {
         let (op, _tool) = optool(b"#!/bin/bash\nexit 1");
 
         // XXX: should look for specific error
-        assert!(op.get_item("uuid").is_err());
+        assert!(op.get_item("id").is_err());
 
         Ok(())
     }
 
     #[test]
     fn test_tool_op_get_item_correct_arguments() -> anyhow::Result<()> {
-        let (op, _tool) = optool(b"#!/bin/bash\n [[ \"$1\" == \"get\" ]] && [[ \"$2\" == \"item\" ]] && [[ \"$3\" == \"uuid\" ]] && [[ \"$4\" == \"\" ]] && echo {}");
+        let (op, _tool) = optool(b"#!/bin/bash\n [[ \"$1\" == \"items\" ]] && [[ \"$2\" == \"get\" ]] && [[ \"$3\" == \"--format=json\" ]] && [[ \"$4\" == \"id\" ]] && [[ \"$5\" == \"\" ]] && echo {}");
 
-        op.get_item("uuid").unwrap();
+        op.get_item("id").unwrap();
 
         Ok(())
     }
 
     #[test]
     fn test_tool_op_list_items_correct_arguments() -> anyhow::Result<()> {
-        let (op, _tool) = optool(b"#!/bin/bash\n [[ \"$1\" == \"list\" ]] && [[ \"$2\" == \"items\" ]] && [[ \"$3\" == \"\" ]] && echo \"[]\"");
+        let (op, _tool) = optool(b"#!/bin/bash\n [[ \"$1\" == \"items\" ]] && [[ \"$2\" == \"list\" ]] && [[ \"$3\" == \"--format=json\" ]] && [[ \"$4\" == \"\" ]] && echo \"[]\"");
 
         op.list_items().unwrap();
 
@@ -519,7 +521,7 @@ mod test {
     fn test_tool_op_get_item_kill9() -> anyhow::Result<()> {
         let (op, _tool) = optool(b"#!/bin/bash\n kill -9 $$");
 
-        assert!(op.get_item("uuid").is_err());
+        assert!(op.get_item("id").is_err());
 
         Ok(())
     }
