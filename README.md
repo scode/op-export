@@ -3,10 +3,7 @@
 op-export is a command line tool allowing you to export (or backup)
 items in a [1Password](https://1password.com/) vault.
 
-The output is intentionally *unencrypted*. You may wish to combine
-with [saltybox](https://github.com/scode/saltybox) to get an offline
-encrypted backup of your vault that is independent of the 1Password
-service and software.
+## First, you probably should not use this.
 
 Prior to deciding to use op-export, it is recommendted to first
 evaluate the backup methods [offered by 1Password
@@ -17,6 +14,22 @@ In particular, note that the native 1Password app allows exporting
 into [an unencrypted
 format](https://support.1password.com/1pux-format/) which is easy to
 consume as a human or in tools (JSON based).
+
+## Limitations
+
+* This tool has only been tested for basic login information
+  (username/password). You should manually expect the output
+  to determine it has the information you expect. For example,
+  "document" items in 1password do not contain file contents
+  inline in the item JSON returned through the command line
+  tool. Those will not be backed up.
+
+## If you really want to use it anyway
+
+The output is intentionally *unencrypted*. You may wish to combine
+with [saltybox](https://github.com/scode/saltybox) to get an offline
+encrypted backup of your vault that is independent of the 1Password
+service and software.
 
 Please note that there is currently no corresponding ability to
 *import* data back into 1Password. The tool is intended as a last
