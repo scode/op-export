@@ -3,7 +3,7 @@
 op-export is a command line tool allowing you to export (or backup)
 items in a [1Password](https://1password.com/) vault.
 
-## First, you probably should not use this.
+## First, you probably SHOULD NOT USE THIS TOOL
 
 Prior to deciding to use op-export, it is recommendted to first
 evaluate the backup methods [offered by 1Password
