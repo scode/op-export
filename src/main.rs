@@ -1,7 +1,7 @@
 use anyhow::anyhow;
-use crossbeam::channel::unbounded;
 use crossbeam::channel::Receiver;
 use crossbeam::channel::Sender;
+use crossbeam::channel::unbounded;
 use std::collections::HashMap;
 use std::process::Command;
 use std::sync::Arc;
