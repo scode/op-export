@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::process::Command;
 use std::sync::Arc;
 use std::thread;
+use rand::prelude::*;
 
 #[derive(Eq, PartialEq, Debug)]
 struct Item {
@@ -157,9 +158,9 @@ impl Op for ToolOp {
                         return Err(e);
                     }
 
-                    use rand::Rng;
+                    let mut rng = rand::rng();
                     let backoff_time =
-                        rand::thread_rng().gen_range((tries * 3000)..((tries + 1) * 3000));
+                        rng.random_range((tries * 3000)..((tries + 1) * 3000));
 
                     if self.backoff {
                         println!("get item: backing off: {}ms", backoff_time);
