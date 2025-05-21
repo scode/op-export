@@ -2,7 +2,6 @@ use anyhow::anyhow;
 use crossbeam::channel::Receiver;
 use crossbeam::channel::Sender;
 use crossbeam::channel::unbounded;
-use std::collections::HashMap;
 use std::process::Command;
 use std::sync::Arc;
 use std::thread;
@@ -36,32 +35,8 @@ trait Op: Send + Sync + 'static {
     fn get_item(&self, id: &str) -> anyhow::Result<serde_json::Value>;
 }
 
-struct MockOp {
-    // id -> item body result. If the result is absent, it is taken to be
-    // a mock error.
-    //
-    // (The value type in the map is not anyhow::Result<String> because of
-    // https://github.com/dtolnay/anyhow/issues/7 preventing cloning the error, so
-    // we have to use something else. Until we care about the types of errors in
-    // tests, an option is fine.)
-    items: HashMap<String, std::option::Option<serde_json::Value>>,
-}
 
-impl Op for MockOp {
-    fn list_items(&self) -> anyhow::Result<Vec<String>> {
-        Ok(self.items.keys().map(|s| s.to_owned()).collect())
-    }
 
-    fn get_item(&self, id: &str) -> anyhow::Result<serde_json::Value> {
-        match self.items.get(id) {
-            Some(body) => match body {
-                Some(body) => Ok(body.to_owned()),
-                None => Err(anyhow!("mock error for id {}", id)),
-            },
-            None => Err(anyhow!("no id {} in mock", id)),
-        }
-    }
-}
 
 struct ToolOp {
     /// Command to run (e.g. "op").
@@ -159,7 +134,7 @@ impl Op for ToolOp {
 
                     use rand::Rng;
                     let backoff_time =
-                        rand::thread_rng().gen_range((tries * 3000)..((tries + 1) * 3000));
+                        rand::rng().random_range((tries * 3000)..((tries + 1) * 3000));
 
                     if self.backoff {
                         println!("get item: backing off: {}ms", backoff_time);
@@ -326,11 +301,41 @@ fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod test {
     use super::Op;
+    use super::anyhow;
+    use std::collections::HashMap;
+    use serde_json;
     use serde_json::json;
+
+    struct MockOp {
+        // id -> item body result. If the result is absent, it is taken to be
+        // a mock error.
+        //
+        // (The value type in the map is not anyhow::Result<String> because of
+        // https://github.com/dtolnay/anyhow/issues/7 preventing cloning the error, so
+        // we have to use something else. Until we care about the types of errors in
+        // tests, an option is fine.)
+        items: HashMap<String, std::option::Option<serde_json::Value>>,
+    }
+
+    impl Op for MockOp {
+        fn list_items(&self) -> anyhow::Result<Vec<String>> {
+            Ok(self.items.keys().map(|s| s.to_owned()).collect())
+        }
+
+        fn get_item(&self, id: &str) -> anyhow::Result<serde_json::Value> {
+            match self.items.get(id) {
+                Some(body) => match body {
+                    Some(body) => Ok(body.to_owned()),
+                    None => Err(anyhow!("mock error for id {}", id)),
+                },
+                None => Err(anyhow!("no id {} in mock", id)),
+            }
+        }
+    }
 
     #[test]
     fn test_fetch_all_items_all_no_items() -> anyhow::Result<()> {
-        let items = super::fetch_all_items(std::sync::Arc::new(super::MockOp {
+        let items = super::fetch_all_items(std::sync::Arc::new(MockOp {
             items: std::collections::HashMap::new(),
         }))?;
 
@@ -341,7 +346,7 @@ mod test {
 
     #[test]
     fn test_fetch_all_items_all_success() -> anyhow::Result<()> {
-        let items = super::fetch_all_items(std::sync::Arc::new(super::MockOp {
+        let items = super::fetch_all_items(std::sync::Arc::new(MockOp {
             items: vec![
                 ("id1".to_owned(), Some(json!({"id": "id1"}))),
                 ("id2".to_owned(), Some(json!({"id": "id2"}))),
@@ -374,7 +379,7 @@ mod test {
 
     #[test]
     fn test_fetch_all_items_some_failed() -> anyhow::Result<()> {
-        let items = super::fetch_all_items(std::sync::Arc::new(super::MockOp {
+        let items = super::fetch_all_items(std::sync::Arc::new(MockOp {
             items: vec![
                 ("id1".to_owned(), Some(json!({"id": "id1"}))),
                 ("id2".to_owned(), None),
