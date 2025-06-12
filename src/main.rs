@@ -217,9 +217,8 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
     // Not sure how to make this more explicit while still being idiomatic?
     let items: anyhow::Result<Vec<Item>> = item_receiver
         .into_iter()
-        .map(|it| {
+        .inspect(|_it| {
             progress.done();
-            it
         })
         .collect();
 
