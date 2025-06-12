@@ -9,7 +9,7 @@ items in a [1Password](https://1password.com/) vault.
 
 ## First, you probably SHOULD NOT USE THIS TOOL
 
-Prior to deciding to use op-export, it is recommendted to first
+Prior to deciding to use op-export, it is recommended to first
 evaluate the backup methods [offered by 1Password
 itself](https://support.1password.com/backups/) to see if those
 satisfy your requirements.
@@ -22,7 +22,7 @@ consume as a human or in tools (JSON based).
 ## Limitations
 
 * This tool has only been tested for basic login information
-  (username/password). You should manually expect the output
+  (username/password). You should manually inspect the output
   to determine it has the information you expect. For example,
   "document" items in 1password do not contain file contents
   inline in the item JSON returned through the command line
@@ -71,7 +71,7 @@ JSON, we assume success and accept the JSON as a valid vault item.
 
 ## Troubleshooting
 
-The `op` tool has various strange failure modes, often different type
+The `op` tool has various strange failure modes, often different types
 of parsing errors rather than telling you what is actually wrong. Some
 modes of failure I have found require you to `op signin` again to
 unwedge it.
