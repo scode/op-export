@@ -298,7 +298,6 @@ fn main() -> anyhow::Result<()> {
 mod test {
     use super::Op;
     use super::anyhow;
-    use serde_json;
     use serde_json::json;
     use std::collections::HashMap;
 
@@ -404,7 +403,7 @@ mod test {
 
             let mut file = tempfile::NamedTempFile::new().unwrap();
 
-            file.as_file_mut().write_all(&body).unwrap();
+            file.as_file_mut().write_all(body).unwrap();
             use std::os::unix::fs::PermissionsExt;
             let mut perms = std::fs::metadata(file.path()).unwrap().permissions();
             perms.set_mode(0o700);
@@ -442,7 +441,7 @@ mod test {
 
         let items = op.list_items().unwrap();
         assert_eq!(1, items.len());
-        assert_eq!("value", items.get(0).unwrap());
+        assert_eq!("value", items.first().unwrap());
 
         Ok(())
     }
@@ -454,7 +453,7 @@ mod test {
 
         let items = op.list_items().unwrap();
         assert_eq!(2, items.len());
-        assert_eq!("value1", items.get(0).unwrap());
+        assert_eq!("value1", items.first().unwrap());
         assert_eq!("value2", items.get(1).unwrap());
 
         Ok(())
