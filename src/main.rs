@@ -264,30 +264,31 @@ fn export(op_path: &str, dest_path: &str) -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
-    use clap::App;
     use clap::Arg;
+    use clap::Command;
 
-    let matches = App::new("op-export")
+    let matches = Command::new("op-export")
         .arg(
-            Arg::with_name("op")
+            Arg::new("op")
                 .long("op")
                 .value_name("PATH")
-                .takes_value(true)
                 .help("The path of the op binary to use (default: op)."),
         )
         .arg(
-            Arg::with_name("output")
-                .short("o")
+            Arg::new("output")
+                .short('o')
                 .long("output")
                 .value_name("PATH")
-                .takes_value(true)
                 .required(true)
                 .help("The path to which to write the export in JSON format (required)."),
         )
         .get_matches();
 
-    let op_path = matches.value_of("op").unwrap_or("op");
-    let dest_path = matches.value_of("output").unwrap();
+    let op_path = matches
+        .get_one::<String>("op")
+        .map(|s| s.as_str())
+        .unwrap_or("op");
+    let dest_path = matches.get_one::<String>("output").unwrap();
 
     export(op_path, dest_path)?;
 
