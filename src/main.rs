@@ -205,7 +205,7 @@ fn fetch_all_items(op: Arc<dyn Op>) -> anyhow::Result<Vec<Item>> {
     eprintln!("{} total items - initiating fetch", item_ids.len());
 
     let mut progress = ProgressReporter::new();
-    for id in op.list_items()? {
+    for id in item_ids {
         progress.pending();
         id_sender.send(id)?;
     }
