@@ -65,8 +65,8 @@ Although `op-export` tries hard to let you know if anything goes
 wrong, it is recommended that the resulting file be inspected to
 ensure it looks reasonable.
 
-`op-export` operates by invoking `op list items` followed by using `op
-get item` to fetch each item listed. If `op get item` gives us valid
+`op-export` operates by invoking `op items list` followed by using `op
+items get` to fetch each item listed. If `op items get` gives us valid
 JSON, we assume success and accept the JSON as a valid vault item.
 
 ## Troubleshooting
