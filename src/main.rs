@@ -129,7 +129,7 @@ impl Op for ToolOp {
                         return Err(e);
                     }
 
-                    use rand::Rng;
+                    use rand::RngExt;
                     let backoff_time =
                         rand::rng().random_range((tries * 3000)..((tries + 1) * 3000));
 
