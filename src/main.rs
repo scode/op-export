@@ -301,6 +301,7 @@ mod test {
     use super::anyhow;
     use serde_json::json;
     use std::collections::HashMap;
+    use std::sync::{Mutex, MutexGuard};
 
     struct MockOp {
         // id -> item body result. If the result is absent, it is taken to be
@@ -394,14 +395,32 @@ mod test {
         }
     }
 
+    // A child spawned by any mock can inherit another mock's writable script
+    // before CLOEXEC closes it. Exclude process spawning for the entire creation
+    // and execution lifetime, not just while writing or closing one script.
+    static MOCK_PROCESS_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Own a mock script and exclude other mock process lifetimes until it drops.
+    ///
+    /// The path drops before the guard, keeping cleanup inside the same boundary.
+    /// In-memory MockOp tests need no lock and remain independently parallel.
     struct MockTool {
         path: tempfile::TempPath,
+        _spawn_guard: MutexGuard<'static, ()>,
     }
 
     impl MockTool {
+        /// Close the writer before execution while preventing other mocks from
+        /// spawning children that could retain an inherited writable descriptor.
         fn new(body: &[u8]) -> MockTool {
             use std::io::prelude::*;
 
+            // A failed assertion may poison the mutex, but unwinding still drops
+            // its script and guard. Preserve exclusion without making every later
+            // mock fail solely because an earlier test failed.
+            let spawn_guard = MOCK_PROCESS_LOCK
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let mut file = tempfile::NamedTempFile::new().unwrap();
 
             file.as_file_mut().write_all(body).unwrap();
@@ -410,20 +429,57 @@ mod test {
             perms.set_mode(0o700);
             std::fs::set_permissions(file.path(), perms).unwrap();
 
-            // Turning it into a TempPath is important. On Linux (but not MacOS), we
-            // must close the underlying file before there is an attempt to execute
-            // it - or executation will fail with "text file busy".
+            // The lock prevents cross-test inheritance; closing our own writable
+            // descriptor is still required before Linux can execute the script.
             MockTool {
                 path: file.into_temp_path(),
+                _spawn_guard: spawn_guard,
             }
         }
     }
 
+    /// Keep the script guard alive alongside the ToolOp for every mock invocation.
     fn optool(tool_body: &[u8]) -> (super::ToolOp, MockTool) {
         let tool = MockTool::new(tool_body);
         let op = super::ToolOp::new_without_backoff(tool.path.to_str().unwrap().into());
 
         (op, tool)
+    }
+
+    /// The exclusion must survive constructor return and subprocess execution;
+    /// locking only script creation would leave the inherited-writer race open.
+    #[test]
+    fn test_mock_tool_holds_exclusion_through_execution() {
+        let (op, _tool) = optool(b"#!/bin/bash\necho '[]'\n");
+        assert!(matches!(
+            MOCK_PROCESS_LOCK.try_lock(),
+            Err(std::sync::TryLockError::WouldBlock)
+        ));
+        assert!(op.list_items().unwrap().is_empty());
+        assert!(matches!(
+            MOCK_PROCESS_LOCK.try_lock(),
+            Err(std::sync::TryLockError::WouldBlock)
+        ));
+    }
+
+    /// Parallel mock creation must not leave a writable script inherited by
+    /// another test's child. Closing the parent's file alone cannot prevent
+    /// Linux ETXTBSY during that child's pre-exec window.
+    #[test]
+    fn test_mock_tools_execute_under_concurrent_creation() {
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| {
+                    for _ in 0..64 {
+                        let (op, _tool) = optool(
+                            b"#!/bin/bash\nif [ \"$2\" = list ]; then echo '[{\"id\":\"value\"}]'; else echo '{\"id\":\"value\"}'; fi\n",
+                        );
+                        assert_eq!(op.list_items().unwrap(), vec!["value"]);
+                        assert_eq!(op.get_item("value").unwrap(), json!({"id": "value"}));
+                    }
+                });
+            }
+        });
     }
 
     #[test]
